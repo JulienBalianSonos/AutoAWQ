@@ -58,22 +58,8 @@ class WQLinearMMFunction(Function):
                     x.reshape(-1, x.shape[-1]), qweight, scales, qzeros, 8
                 )
 
-        elif TRITON_AVAILABLE and w_bit == 4:
-            FP16_MATMUL_HEURISTIC_CONDITION = x.shape[0] * x.shape[1] >= 1024
-
-            if FP16_MATMUL_HEURISTIC_CONDITION:
-                out = awq_dequantize_triton(qweight, scales, qzeros)
-                out = torch.matmul(x, out)
-            else:
-                out = awq_gemm_triton(
-                    x.reshape(-1, x.shape[-1]),
-                    qweight,
-                    scales,
-                    qzeros,
-                    split_k_iters=8,
-                )
-
         else:
+            global user_has_been_warned
             if not user_has_been_warned:
                 warnings.warn("Using naive (slow) implementation." + msg)
                 user_has_been_warned = True
