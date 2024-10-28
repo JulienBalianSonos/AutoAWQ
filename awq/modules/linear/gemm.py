@@ -1,10 +1,12 @@
-import torch
 import warnings
+
+import torch
 import torch.nn as nn
 from torch.autograd import Function
+
 from awq.utils.module import try_import
-from awq.utils.utils import get_best_device
 from awq.utils.packing_utils import dequantize_gemm
+from awq.utils.utils import get_best_device
 
 # NOTE: We check if awq_ext or triton is available. awq_ext will be preferred if both are installed.
 
@@ -12,7 +14,7 @@ awq_ext, msg = try_import("awq_ext")
 user_has_been_warned = False
 
 try:
-    from awq.modules.triton.gemm import awq_gemm_triton, awq_dequantize_triton
+    from awq.modules.triton.gemm import awq_dequantize_triton, awq_gemm_triton
 
     # covers both CUDA and ROCm
     if torch.cuda.is_available():
@@ -64,7 +66,11 @@ class WQLinearMMFunction(Function):
                 out = torch.matmul(x, out)
             else:
                 out = awq_gemm_triton(
-                    x.reshape(-1, x.shape[-1]), qweight, scales, qzeros, split_k_iters=8,
+                    x.reshape(-1, x.shape[-1]),
+                    qweight,
+                    scales,
+                    qzeros,
+                    split_k_iters=8,
                 )
 
         else:
@@ -92,24 +98,27 @@ class WQLinearMMFunction(Function):
                 "either triton or autoawq-kernels is needed to be installed to use `.backward()`. Make sure to install the auto-awq kernels"
                 " by following the installation guides in https://github.com/casper-hansen/AutoAWQ_kernels"
             )
-        
+
         # Cast to correct dtype for mixed precision training
         if awq_ext is not None:
             weights = awq_ext.dequantize_weights_cuda(
                 qweight, scales, qzeros, 1, 0, 0, False
             ).to(grad_output.dtype)
         else:
-            weights = awq_dequantize_triton(
-                qweight, scales, qzeros
-            ).to(grad_output.dtype)
+            weights = awq_dequantize_triton(qweight, scales, qzeros).to(
+                grad_output.dtype
+            )
 
         if ctx.needs_input_grad[0]:
             # 3D matmul using torch.bmm: https://pytorch.org/docs/stable/generated/torch.bmm.html#torch.bmm
             # to propagate gradient across all batch sizes.
             batch_size = grad_output.shape[0]
-            grad_input = grad_output.bmm(weights.transpose(0, 1).unsqueeze(0).repeat(batch_size, 1, 1))
+            grad_input = grad_output.bmm(
+                weights.transpose(0, 1).unsqueeze(0).repeat(batch_size, 1, 1)
+            )
 
         return grad_input, None, None, None, None, None, None, None
+
 
 class WQLinear_GEMM(nn.Module):
     def __init__(
@@ -117,8 +126,8 @@ class WQLinear_GEMM(nn.Module):
     ):
         super().__init__()
 
-        if w_bit not in [4]:
-            raise NotImplementedError("Only 4-bit are supported for now.")
+        if w_bit not in [4, 2]:
+            raise NotImplementedError("Only 4 or 2-bit are supported for now.")
 
         self.in_features = in_features
         self.out_features = out_features
@@ -218,8 +227,10 @@ class WQLinear_GEMM(nn.Module):
         for col in range(intweight.shape[1] // pack_num):
             if awq_linear.w_bit == 4:
                 order_map = [0, 2, 4, 6, 1, 3, 5, 7]
+            elif awq_linear.w_bit == 2:
+                order_map = [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
             else:
-                raise NotImplementedError("Only 4-bit are supported for now.")
+                raise NotImplementedError("Only 4 or 2-bit are supported for now.")
             for i in range(pack_num):
                 qweight_col = intweight[:, col * pack_num + order_map[i]]
                 qweight[:, col] |= qweight_col << (i * awq_linear.w_bit)
@@ -239,8 +250,10 @@ class WQLinear_GEMM(nn.Module):
         for col in range(zeros.shape[1] // pack_num):
             if awq_linear.w_bit == 4:
                 order_map = [0, 2, 4, 6, 1, 3, 5, 7]
+            elif awq_linear.w_bit == 2:
+                order_map = [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
             else:
-                raise NotImplementedError("Only 4-bit are supported for now.")
+                raise NotImplementedError("Only 4 or 2-bit are supported for now.")
             for i in range(pack_num):
                 qzero_col = zeros[:, col * pack_num + order_map[i]]
                 qzeros[:, col] |= qzero_col << (i * awq_linear.w_bit)
