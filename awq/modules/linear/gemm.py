@@ -39,7 +39,7 @@ class WQLinearMMFunction(Function):
         out_features=0,
     ):
         # The forward pass can use ctx.
-        ctx.save_for_backward(x, qweight, qzeros, scales, bias)
+        ctx.save_for_backward(x, qweight, qzeros, scales, bias, w_bit, group_size)
         ctx.out_features = out_features
 
         out_shape = x.shape[:-1] + (out_features,)
@@ -58,7 +58,7 @@ class WQLinearMMFunction(Function):
                     x.reshape(-1, x.shape[-1]), qweight, scales, qzeros, 8
                 )
 
-        elif TRITON_AVAILABLE:
+        elif TRITON_AVAILABLE and w_bit == 4:
             FP16_MATMUL_HEURISTIC_CONDITION = x.shape[0] * x.shape[1] >= 1024
 
             if FP16_MATMUL_HEURISTIC_CONDITION:
@@ -91,7 +91,7 @@ class WQLinearMMFunction(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, qweight, qzeros, scales, bias = ctx.saved_tensors
+        input, qweight, qzeros, scales, bias, w_bit, group_size = ctx.saved_tensors
 
         if awq_ext is None and not TRITON_AVAILABLE:
             raise ValueError(
@@ -105,7 +105,8 @@ class WQLinearMMFunction(Function):
                 qweight, scales, qzeros, 1, 0, 0, False
             ).to(grad_output.dtype)
         else:
-            weights = awq_dequantize_triton(qweight, scales, qzeros).to(
+            # slow be working
+            weights = dequantize_gemm(qweight, qzeros, scales, w_bit, group_size).to(
                 grad_output.dtype
             )
 
