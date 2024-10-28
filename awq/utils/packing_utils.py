@@ -1,8 +1,9 @@
 import torch
 
-
 AWQ_ORDER = [0, 2, 4, 6, 1, 3, 5, 7]
-AWQ_REVERSE_ORDER = [0, 4, 1, 5, 2, 6, 3, 7]
+AWQ_REVERSE_ORDER_4B = [0, 4, 1, 5, 2, 6, 3, 7]
+AWQ_ORDER_2B = [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15]
+AWQ_REVERSE_ORDER_2B = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15]
 
 
 def unpack_awq(qweight: torch.Tensor, qzeros: torch.Tensor, bits: int):
@@ -16,7 +17,9 @@ def unpack_awq(qweight: torch.Tensor, qzeros: torch.Tensor, bits: int):
 
     # unpacking columnwise
     if qzeros is not None:
-        izeros = torch.bitwise_right_shift(qzeros[:, :, None], shifts[None, None, :]).to(
+        izeros = torch.bitwise_right_shift(
+            qzeros[:, :, None], shifts[None, None, :]
+        ).to(
             torch.int8  # smallest dtype available
         )
         izeros = izeros.view(izeros.shape[0], -1)
@@ -33,7 +36,12 @@ def reverse_awq_order(iweights: torch.Tensor, izeros: torch.Tensor, bits: int):
         device=izeros.device,
     )
     reverse_order_tensor = reverse_order_tensor.view(-1, 32 // bits)
-    reverse_order_tensor = reverse_order_tensor[:, AWQ_REVERSE_ORDER]
+    if bits == 4:
+        reverse_order_tensor = reverse_order_tensor[:, AWQ_REVERSE_ORDER_4B]
+    elif bits == 2:
+        reverse_order_tensor = reverse_order_tensor[:, AWQ_REVERSE_ORDER_2B]
+    else:
+        raise NotImplementedError(bits)
     reverse_order_tensor = reverse_order_tensor.view(-1)
 
     if izeros is not None:
