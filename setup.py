@@ -64,7 +64,6 @@ common_setup_kwargs = {
 
 requirements = [
     f"torch>={TORCH_VERSION}",
-    "triton",
     "transformers>=4.35.0",
     "tokenizers>=0.12.1",
     "typing_extensions>=4.8.0",
@@ -72,6 +71,8 @@ requirements = [
     "datasets>=2.20",
     "zstandard",
 ]
+if not torch.backends.mps.is_available():
+    requirements.append("triton")
 
 try:
     import awq_ext
