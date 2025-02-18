@@ -7,7 +7,7 @@ from torch.utils.cpp_extension import CUDAExtension
 AUTOAWQ_VERSION = "0.2.6"
 PYPI_BUILD = os.getenv("PYPI_BUILD", "0") == "1"
 INSTALL_KERNELS = os.getenv("INSTALL_KERNELS", "0") == "1"
-IS_CPU_ONLY = not torch.cuda.is_available()
+IS_CPU_ONLY = not torch.backends.mps.is_available() and not torch.cuda.is_available()
 TORCH_VERSION = str(os.getenv("TORCH_VERSION", None) or torch.__version__).split(
     "+", maxsplit=1
 )[0]
@@ -28,6 +28,8 @@ if not PYPI_BUILD:
         AUTOAWQ_VERSION += f"+cu{CUDA_VERSION}"
     elif ROCM_VERSION:
         AUTOAWQ_VERSION += f"+rocm{ROCM_VERSION}"
+    elif torch.backends.mps.is_available():
+        print("package AutoAWQ: will not have any optimized kernel (macos)")
     else:
         raise RuntimeError(
             "Your system must have either Nvidia or AMD GPU to build this package."
