@@ -7,8 +7,10 @@ from torch.utils.cpp_extension import CUDAExtension
 AUTOAWQ_VERSION = "0.2.6"
 PYPI_BUILD = os.getenv("PYPI_BUILD", "0") == "1"
 INSTALL_KERNELS = os.getenv("INSTALL_KERNELS", "0") == "1"
-IS_CPU_ONLY = not torch.backends.mps.is_available() and not torch.cuda.is_available()
-TORCH_VERSION = str(os.getenv("TORCH_VERSION", None) or torch.__version__).split('+', maxsplit=1)[0]
+IS_CPU_ONLY = not torch.cuda.is_available()
+TORCH_VERSION = str(os.getenv("TORCH_VERSION", None) or torch.__version__).split(
+    "+", maxsplit=1
+)[0]
 
 CUDA_VERSION = os.getenv("CUDA_VERSION", None) or torch.version.cuda
 if CUDA_VERSION:
@@ -76,7 +78,12 @@ try:
 except ImportError:
     KERNELS_INSTALLED = False
 
-if not KERNELS_INSTALLED and CUDA_VERSION and INSTALL_KERNELS and CUDA_VERSION.startswith("12"):
+if (
+    not KERNELS_INSTALLED
+    and CUDA_VERSION
+    and INSTALL_KERNELS
+    and CUDA_VERSION.startswith("12")
+):
     requirements.append("autoawq-kernels")
 
 elif IS_CPU_ONLY:
